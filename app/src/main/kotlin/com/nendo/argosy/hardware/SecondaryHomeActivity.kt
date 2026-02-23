@@ -241,13 +241,15 @@ class SecondaryHomeActivity :
 
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         val result = super.dispatchTouchEvent(event)
-        if (!isShowcaseRole &&
-            event.action == android.view.MotionEvent.ACTION_UP &&
-            dualHomeViewModel.forwardingMode.value ==
-                com.nendo.argosy.ui.dualscreen.home.ForwardingMode.BACKGROUND
-        ) {
-            window.decorView.post {
-                if (currentScreen == CompanionScreen.HOME) broadcasts.broadcastRefocusUpper()
+        if (event.action == android.view.MotionEvent.ACTION_UP) {
+            if (isShowcaseRole) {
+                window.decorView.post { broadcasts.broadcastRefocusUpper() }
+            } else if (
+                dualHomeViewModel.forwardingMode.value ==
+                    com.nendo.argosy.ui.dualscreen.home.ForwardingMode.BACKGROUND &&
+                currentScreen == CompanionScreen.HOME
+            ) {
+                window.decorView.post { broadcasts.broadcastRefocusUpper() }
             }
         }
         return result

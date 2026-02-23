@@ -1251,6 +1251,7 @@ class DualScreenManager(
             (newOverride == "AUTO" && displayAffinityHelper.secondaryDisplayType == SecondaryDisplayType.EXTERNAL)
         isRolesSwapped = newSwapped
         sessionStateStore.setRolesSwapped(newSwapped)
+        onRoleSwapped?.invoke(newSwapped)
         companionHost?.onRoleSwapped(newSwapped)
     }
 
