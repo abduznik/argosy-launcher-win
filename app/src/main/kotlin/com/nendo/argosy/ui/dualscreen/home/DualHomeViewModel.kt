@@ -987,9 +987,7 @@ class DualHomeViewModel(
 
     private fun loadLibraryGames(onLoaded: (() -> Unit)? = null) {
         viewModelScope.launch {
-            val installedOnly = isInstalledOnlyEnabled()
-            var entities = gameDao.getAllSortedByTitle()
-            if (installedOnly) entities = filterPlayable(entities)
+            val entities = gameDao.getAllSortedByTitle()
             val allGames = entities.map { it.toUi() }
             allLibraryGames = allGames
             val filters = _uiState.value.activeFilters
@@ -1008,9 +1006,7 @@ class DualHomeViewModel(
 
     private fun loadLibraryGamesForPlatform(platformId: Long, onLoaded: (() -> Unit)? = null) {
         viewModelScope.launch {
-            val installedOnly = isInstalledOnlyEnabled()
-            var entities = gameDao.getByPlatform(platformId)
-            if (installedOnly) entities = filterPlayable(entities)
+            val entities = gameDao.getByPlatform(platformId)
             val platformGames = entities.map { it.toUi() }
             allLibraryGames = platformGames
             val filters = _uiState.value.activeFilters

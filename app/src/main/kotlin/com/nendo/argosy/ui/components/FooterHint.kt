@@ -25,10 +25,9 @@ import com.nendo.argosy.ui.icons.InputIcons
 import com.nendo.argosy.ui.input.LocalABIconsSwapped
 import com.nendo.argosy.ui.input.LocalXYIconsSwapped
 import com.nendo.argosy.ui.input.LocalSwapStartSelect
-import com.nendo.argosy.ui.theme.AspectRatioClass
+import androidx.compose.ui.platform.LocalConfiguration
 import com.nendo.argosy.ui.theme.Dimens
 import com.nendo.argosy.ui.theme.LocalLauncherTheme
-import com.nendo.argosy.ui.theme.LocalUiScale
 
 data class FooterStyleConfig(
     val useAccentColor: Boolean = false
@@ -137,7 +136,8 @@ fun FooterHint(
         Text(
             text = action,
             style = MaterialTheme.typography.bodySmall,
-            color = textColor
+            color = textColor,
+            maxLines = 1
         )
     }
 }
@@ -193,6 +193,42 @@ private fun CompositeButtonIcon(button: InputButton, iconColor: Color) {
     }
 }
 
+@Composable
+private fun <T> filterHintsByWidth(
+    hints: List<T>,
+    buttonOf: (T) -> InputButton,
+    labelOf: (T) -> String,
+    priorityOf: (T) -> Int
+): List<T> {
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val paddingDp = 48
+    val gapDp = 24
+    val availableDp = screenWidthDp - paddingDp
+
+    fun estimateWidth(button: InputButton, label: String): Int {
+        val iconDp = if (button.isComposite()) 44 else 22
+        val textDp = label.length * 7
+        return iconDp + 4 + textDp
+    }
+
+    val totalWidth = hints.sumOf { estimateWidth(buttonOf(it), labelOf(it)) } +
+        (hints.size - 1).coerceAtLeast(0) * gapDp
+
+    if (totalWidth <= availableDp) return hints
+
+    val sorted = hints.sortedByDescending { priorityOf(it) }
+    var width = 0
+    val fitting = mutableListOf<T>()
+    for (hint in sorted) {
+        val w = estimateWidth(buttonOf(hint), labelOf(hint)) +
+            if (fitting.isNotEmpty()) gapDp else 0
+        if (width + w > availableDp) break
+        width += w
+        fitting.add(hint)
+    }
+    return if (fitting.size >= 2) fitting else sorted.take(2)
+}
+
 private fun InputButton.faceButtonPriority(): Int = when (this) {
     InputButton.Y -> 0
     InputButton.X -> 1
@@ -218,24 +254,18 @@ fun FooterBar(
     trailingContent: @Composable (() -> Unit)? = null
 ) {
     val footerStyle = LocalFooterStyle.current
-    val aspectRatioClass = LocalUiScale.current.aspectRatioClass
     val backgroundColor = if (footerStyle.useAccentColor) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
 
-    val maxHints = when (aspectRatioClass) {
-        AspectRatioClass.ULTRA_TALL -> 3
-        AspectRatioClass.TALL -> 4
-        else -> hints.size
-    }
-
-    val filteredHints = if (hints.size > maxHints) {
-        hints.sortedByDescending { it.first.hidePriority() }.take(maxHints)
-    } else {
-        hints
-    }
+    val filteredHints = filterHintsByWidth(
+        hints,
+        buttonOf = { it.first },
+        labelOf = { it.second },
+        priorityOf = { it.first.hidePriority() }
+    )
 
     val dpadHints = filteredHints.filter { it.first.category() == HintCategory.DPAD }
     val bumperHints = filteredHints.filter { it.first.category() == HintCategory.BUMPER }
@@ -285,24 +315,18 @@ fun FooterBarWithState(
     trailingContent: @Composable (() -> Unit)? = null
 ) {
     val footerStyle = LocalFooterStyle.current
-    val aspectRatioClass = LocalUiScale.current.aspectRatioClass
     val backgroundColor = if (footerStyle.useAccentColor) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
 
-    val maxHints = when (aspectRatioClass) {
-        AspectRatioClass.ULTRA_TALL -> 3
-        AspectRatioClass.TALL -> 4
-        else -> hints.size
-    }
-
-    val filteredHints = if (hints.size > maxHints) {
-        hints.sortedByDescending { it.button.hidePriority() }.take(maxHints)
-    } else {
-        hints
-    }
+    val filteredHints = filterHintsByWidth(
+        hints,
+        buttonOf = { it.button },
+        labelOf = { it.action },
+        priorityOf = { it.button.hidePriority() }
+    )
 
     val dpadHints = filteredHints.filter { it.button.category() == HintCategory.DPAD }
     val bumperHints = filteredHints.filter { it.button.category() == HintCategory.BUMPER }
@@ -372,19 +396,13 @@ fun SubtleFooterBar(
     onHintClick: ((InputButton) -> Unit)? = null
 ) {
     val footerStyle = LocalFooterStyle.current
-    val aspectRatioClass = LocalUiScale.current.aspectRatioClass
 
-    val maxHints = when (aspectRatioClass) {
-        AspectRatioClass.ULTRA_TALL -> 3
-        AspectRatioClass.TALL -> 4
-        else -> hints.size
-    }
-
-    val filteredHints = if (hints.size > maxHints) {
-        hints.sortedByDescending { it.first.hidePriority() }.take(maxHints)
-    } else {
-        hints
-    }
+    val filteredHints = filterHintsByWidth(
+        hints,
+        buttonOf = { it.first },
+        labelOf = { it.second },
+        priorityOf = { it.first.hidePriority() }
+    )
 
     val dpadHints = filteredHints.filter { it.first.category() == HintCategory.DPAD }
     val faceHints = filteredHints.filter { it.first.category() == HintCategory.FACE }
