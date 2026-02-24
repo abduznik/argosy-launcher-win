@@ -79,10 +79,12 @@ interface RomMApi {
         @Query("is_favorite") isFavorite: Boolean? = null
     ): Response<List<RomMCollection>>
 
+    @Multipart
     @POST("api/collections")
     suspend fun createCollection(
         @Query("is_favorite") isFavorite: Boolean = false,
-        @Body collection: RomMCollectionCreate
+        @Part("name") name: RequestBody,
+        @Part("description") description: RequestBody? = null
     ): Response<RomMCollection>
 
     @Multipart

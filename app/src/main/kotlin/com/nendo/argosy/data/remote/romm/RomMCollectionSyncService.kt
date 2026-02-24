@@ -54,7 +54,7 @@ class RomMCollectionSyncService @Inject constructor(
 
                 val createResponse = currentApi.createCollection(
                     isFavorite = true,
-                    collection = RomMCollectionCreate(name = FAVORITES_COLLECTION_NAME)
+                    name = FAVORITES_COLLECTION_NAME.toRequestBody("text/plain".toMediaType())
                 )
                 if (createResponse.isSuccessful) {
                     return createResponse.body()
@@ -235,7 +235,8 @@ class RomMCollectionSyncService @Inject constructor(
                     try {
                         val createResponse = currentApi.createCollection(
                             isFavorite = false,
-                            collection = RomMCollectionCreate(name = local.name, description = local.description)
+                            name = local.name.toRequestBody("text/plain".toMediaType()),
+                            description = local.description?.toRequestBody("text/plain".toMediaType())
                         )
                         if (createResponse.isSuccessful) {
                             val remoteCollection = createResponse.body()
@@ -345,7 +346,8 @@ class RomMCollectionSyncService @Inject constructor(
         return try {
             val response = currentApi.createCollection(
                 isFavorite = false,
-                collection = RomMCollectionCreate(name = name, description = description)
+                name = name.toRequestBody("text/plain".toMediaType()),
+                description = description?.toRequestBody("text/plain".toMediaType())
             )
             if (response.isSuccessful) {
                 val remoteCollection = response.body()
