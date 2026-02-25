@@ -123,12 +123,12 @@ class ImageCacheManager @Inject constructor(
         private const val CACHE_SUBFOLDER = "argosy_images"
     }
 
-    private val logoQueue = Channel<PlatformLogoCacheRequest>(Channel.UNLIMITED)
-    private val coverQueue = Channel<ImageCacheRequest>(Channel.UNLIMITED)
+    private val logoQueue = Channel<PlatformLogoCacheRequest>(256)
+    private val coverQueue = Channel<ImageCacheRequest>(256)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val queue = Channel<ImageCacheRequest>(Channel.UNLIMITED)
-    private val screenshotQueue = Channel<ScreenshotCacheRequest>(Channel.UNLIMITED)
+    private val queue = Channel<ImageCacheRequest>(256)
+    private val screenshotQueue = Channel<ScreenshotCacheRequest>(256)
     private var isProcessing = false
     private var isProcessingScreenshots = false
     private var isProcessingCovers = false
@@ -886,7 +886,7 @@ class ImageCacheManager @Inject constructor(
         }
     }
 
-    private val badgeQueue = Channel<AchievementBadgeCacheRequest>(Channel.UNLIMITED)
+    private val badgeQueue = Channel<AchievementBadgeCacheRequest>(256)
     private var isProcessingBadges = false
 
     fun queueBadgeCache(achievementId: Long, badgeUrl: String, badgeUrlLock: String?) {
@@ -1033,7 +1033,7 @@ class ImageCacheManager @Inject constructor(
         }
     }
 
-    private val appIconQueue = Channel<AppIconCacheRequest>(Channel.UNLIMITED)
+    private val appIconQueue = Channel<AppIconCacheRequest>(256)
     private var isProcessingAppIcons = false
     private val packageManager: PackageManager by lazy { context.packageManager }
 
