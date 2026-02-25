@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var notificationManager: com.nendo.argosy.ui.notification.NotificationManager
     @Inject lateinit var emulatorConfigDao: com.nendo.argosy.data.local.dao.EmulatorConfigDao
     @Inject lateinit var playSessionTracker: com.nendo.argosy.data.emulator.PlaySessionTracker
+    @Inject lateinit var repairImageCacheUseCase: com.nendo.argosy.domain.usecase.cache.RepairImageCacheUseCase
 
     private val sessionStateStore by lazy {
         com.nendo.argosy.data.preferences.SessionStateStore(this)
@@ -245,6 +246,7 @@ class MainActivity : ComponentActivity() {
                 notificationManager = notificationManager,
                 emulatorConfigDao = emulatorConfigDao,
                 playSessionTracker = playSessionTracker,
+                repairImageCacheUseCase = repairImageCacheUseCase,
                 isRolesSwapped = isRolesSwapped
             )
             DualScreenManagerHolder.instance = dualScreenManager

@@ -181,7 +181,8 @@ private fun ScreenshotViewer(
                 else imagePath,
             contentDescription = "Screenshot",
             contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            onError = { /* Show black background instead of blank */ }
         )
     }
 }
@@ -199,7 +200,8 @@ private fun GameInfoDisplay(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .blur(20.dp)
+                .blur(20.dp),
+            onError = { /* Show gradient overlay instead of blank */ }
         )
 
         Box(
@@ -252,7 +254,8 @@ private fun GameInfoDisplay(
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
                         .width(160.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp)),
+                    onError = { /* Show empty space instead of broken image */ }
                 )
             }
 

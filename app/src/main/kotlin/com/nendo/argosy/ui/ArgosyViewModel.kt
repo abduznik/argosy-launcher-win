@@ -247,6 +247,8 @@ class ArgosyViewModel @Inject constructor(
         viewModelScope.launch {
             val ready = gameRepository.awaitStorageReady(timeoutMs = 10_000L)
             if (ready) {
+                gameRepository.validateLocalFiles()
+                gameRepository.discoverLocalFiles()
                 syncCollectionsOnStartup()
                 runBuiltinEmulatorMigration()
                 emulatorUpdateManager.checkIfNeeded()

@@ -80,6 +80,7 @@ class DualScreenManager(
     private val notificationManager: com.nendo.argosy.ui.notification.NotificationManager,
     internal val emulatorConfigDao: com.nendo.argosy.data.local.dao.EmulatorConfigDao,
     internal val playSessionTracker: com.nendo.argosy.data.emulator.PlaySessionTracker,
+    internal val repairImageCacheUseCase: com.nendo.argosy.domain.usecase.cache.RepairImageCacheUseCase? = null,
     var isRolesSwapped: Boolean = false
 ) {
 
@@ -261,7 +262,8 @@ class DualScreenManager(
             downloadQueueDao = downloadQueueDao,
             displayAffinityHelper = displayAffinityHelper,
             context = appContext,
-            preferencesRepository = preferencesRepository
+            preferencesRepository = preferencesRepository,
+            repairImageCacheUseCase = repairImageCacheUseCase
         )
     }
 
@@ -299,15 +301,33 @@ class DualScreenManager(
     }
 
     fun onGameSelected(showcase: DualHomeShowcaseState) {
-        _dualScreenShowcase.value = showcase
         val gameId = showcase.gameId
         if (gameId > 0) {
             scope.launch(Dispatchers.IO) {
+                val validated = validateShowcaseImagePaths(showcase)
+                _dualScreenShowcase.value = validated
                 val entity = gameDao.getById(gameId) ?: return@launch
                 val rommId = entity.rommId ?: return@launch
                 fetchAchievementsUseCase(rommId, gameId)
             }
+        } else {
+            _dualScreenShowcase.value = showcase
         }
+    }
+
+    private suspend fun validateShowcaseImagePaths(showcase: DualHomeShowcaseState): DualHomeShowcaseState {
+        var result = showcase
+        val cover = showcase.coverPath
+        if (cover?.startsWith("/") == true && !java.io.File(cover).exists()) {
+            gameDao.clearCoverPath(showcase.gameId)
+            result = result.copy(coverPath = null)
+        }
+        val bg = showcase.backgroundPath
+        if (bg?.startsWith("/") == true && !java.io.File(bg).exists()) {
+            gameDao.clearBackgroundPath(showcase.gameId)
+            result = result.copy(backgroundPath = null)
+        }
+        return result
     }
 
     internal fun handleGameDetailOpened(gameId: Long) {

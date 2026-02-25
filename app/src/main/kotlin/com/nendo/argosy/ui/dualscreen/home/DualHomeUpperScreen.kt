@@ -131,7 +131,8 @@ fun DualHomeUpperScreen(
                     model = imageModel,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    onError = { /* Show gradient placeholder instead of blank */ }
                 )
             }
         }

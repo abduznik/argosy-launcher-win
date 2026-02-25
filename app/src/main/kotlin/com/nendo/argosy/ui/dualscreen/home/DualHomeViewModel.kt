@@ -25,8 +25,11 @@ import com.nendo.argosy.data.model.SortOption
 import com.nendo.argosy.data.model.SortableProps
 import com.nendo.argosy.data.model.computeGenericSections
 import com.nendo.argosy.data.platform.LocalPlatformIds
+import com.nendo.argosy.domain.usecase.cache.RepairImageCacheUseCase
 import com.nendo.argosy.ui.common.GridDirection
 import com.nendo.argosy.ui.common.GridFocusNavigator
+import com.nendo.argosy.ui.screens.home.GameDownloadIndicator
+import com.nendo.argosy.ui.screens.home.HomeGameUi
 import com.nendo.argosy.util.DisplayAffinityHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -98,13 +101,13 @@ data class DualActiveFilters(
 
 sealed interface DualLibraryGridItem {
     data class Header(val label: String) : DualLibraryGridItem
-    data class Game(val game: DualHomeGameUi, val gameIndex: Int) : DualLibraryGridItem
+    data class Game(val game: HomeGameUi, val gameIndex: Int) : DualLibraryGridItem
 }
 
 data class DualHomeUiState(
     val sections: List<DualHomeSection> = emptyList(),
     val currentSectionIndex: Int = 0,
-    val games: List<DualHomeGameUi> = emptyList(),
+    val games: List<HomeGameUi> = emptyList(),
     val selectedIndex: Int = 0,
     val isLoading: Boolean = true,
     val focusZone: DualHomeFocusZone = DualHomeFocusZone.CAROUSEL,
@@ -113,10 +116,10 @@ data class DualHomeUiState(
     val viewMode: DualHomeViewMode = DualHomeViewMode.CAROUSEL,
     val collectionItems: List<DualCollectionListItem> = emptyList(),
     val selectedCollectionIndex: Int = 0,
-    val collectionGames: List<DualHomeGameUi> = emptyList(),
+    val collectionGames: List<HomeGameUi> = emptyList(),
     val collectionGamesFocusedIndex: Int = 0,
     val activeCollectionName: String = "",
-    val libraryGames: List<DualHomeGameUi> = emptyList(),
+    val libraryGames: List<HomeGameUi> = emptyList(),
     val libraryGridItems: List<DualLibraryGridItem> = emptyList(),
     val libraryFocusedIndex: Int = 0,
     val sectionLabels: List<String> = emptyList(),
@@ -129,7 +132,8 @@ data class DualHomeUiState(
     val activeFilters: DualActiveFilters = DualActiveFilters(),
     val showSectionOverlay: Boolean = false,
     val overlaySectionLabel: String = "",
-    val libraryPlatformLabel: String = "All"
+    val libraryPlatformLabel: String = "All",
+    val repairedCoverPaths: Map<Long, String> = emptyMap()
 ) {
     val currentSection: DualHomeSection?
         get() = sections.getOrNull(currentSectionIndex)
@@ -149,7 +153,7 @@ data class DualHomeUiState(
     val platformName: String
         get() = currentSection?.title ?: ""
 
-    val selectedGame: DualHomeGameUi?
+    val selectedGame: HomeGameUi?
         get() = games.getOrNull(selectedIndex)
 }
 
@@ -160,7 +164,8 @@ class DualHomeViewModel(
     private val downloadQueueDao: DownloadQueueDao,
     private val displayAffinityHelper: DisplayAffinityHelper,
     private val context: Context,
-    private val preferencesRepository: UserPreferencesRepository? = null
+    private val preferencesRepository: UserPreferencesRepository? = null,
+    private val repairImageCacheUseCase: RepairImageCacheUseCase? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DualHomeUiState())
@@ -169,7 +174,8 @@ class DualHomeViewModel(
     private val _forwardingMode = MutableStateFlow(ForwardingMode.NONE)
     val forwardingMode: StateFlow<ForwardingMode> = _forwardingMode.asStateFlow()
 
-    private var allLibraryGames: List<DualHomeGameUi> = emptyList()
+    private var allLibraryGames: List<HomeGameUi> = emptyList()
+    private val pendingCoverRepairs = mutableSetOf<Long>()
     private var letterOverlayJob: kotlinx.coroutines.Job? = null
 
     fun startDrawerForwarding() { _forwardingMode.value = ForwardingMode.OVERLAY }
@@ -225,13 +231,13 @@ class DualHomeViewModel(
                     _uiState.update { state ->
                         state.copy(
                             games = state.games.map { game ->
-                                game.copy(downloadProgress = progressForGame(game.id, downloadsByGameId))
+                                game.copy(downloadIndicator = indicatorForGame(game.id, downloadsByGameId))
                             },
                             libraryGames = state.libraryGames.map { game ->
-                                game.copy(downloadProgress = progressForGame(game.id, downloadsByGameId))
+                                game.copy(downloadIndicator = indicatorForGame(game.id, downloadsByGameId))
                             },
                             collectionGames = state.collectionGames.map { game ->
-                                game.copy(downloadProgress = progressForGame(game.id, downloadsByGameId))
+                                game.copy(downloadIndicator = indicatorForGame(game.id, downloadsByGameId))
                             }
                         )
                     }
@@ -240,14 +246,15 @@ class DualHomeViewModel(
         }
     }
 
-    private fun progressForGame(
+    private fun indicatorForGame(
         gameId: Long,
         downloads: Map<Long, com.nendo.argosy.data.local.entity.DownloadQueueEntity>
-    ): Float? {
-        val entity = downloads[gameId] ?: return null
-        return if (entity.totalBytes > 0) {
+    ): GameDownloadIndicator {
+        val entity = downloads[gameId] ?: return GameDownloadIndicator.NONE
+        val progress = if (entity.totalBytes > 0) {
             (entity.bytesDownloaded.toFloat() / entity.totalBytes).coerceIn(0f, 1f)
         } else 0f
+        return GameDownloadIndicator(isDownloading = true, progress = progress)
     }
 
     private suspend fun buildSections(): List<DualHomeSection> {
@@ -638,7 +645,7 @@ class DualHomeViewModel(
         _uiState.update { it.copy(collectionGamesFocusedIndex = newIndex) }
     }
 
-    fun focusedCollectionGame(): DualHomeGameUi? {
+    fun focusedCollectionGame(): HomeGameUi? {
         val state = _uiState.value
         return state.collectionGames.getOrNull(state.collectionGamesFocusedIndex)
     }
@@ -666,7 +673,7 @@ class DualHomeViewModel(
 
     private fun updateLibraryFocus(newIndex: Int) {
         val state = _uiState.value
-        val sections = computeGenericSections(state.libraryGames, state.activeFilters.sort, DualHomeGameUiProps)
+        val sections = computeGenericSections(state.libraryGames, state.activeFilters.sort, HomeGameUiSortProps)
         val orderedSections = if (state.activeFilters.sort.descending) sections else sections.reversed()
         val newLabel = sectionLabelForGameIndex(newIndex, orderedSections)
         _uiState.update { it.copy(
@@ -690,7 +697,7 @@ class DualHomeViewModel(
     fun jumpToSection(label: String) {
         libraryNav.resetStickyColumn()
         val state = _uiState.value
-        val sections = computeGenericSections(state.libraryGames, state.activeFilters.sort, DualHomeGameUiProps)
+        val sections = computeGenericSections(state.libraryGames, state.activeFilters.sort, HomeGameUiSortProps)
         val orderedSections = if (state.activeFilters.sort.descending) sections else sections.reversed()
         var offset = 0
         for (section in orderedSections) {
@@ -952,7 +959,7 @@ class DualHomeViewModel(
 
 
 
-    private fun sectionLabelForGameIndex(gameIndex: Int, sections: List<Section<DualHomeGameUi>>): String {
+    private fun sectionLabelForGameIndex(gameIndex: Int, sections: List<Section<HomeGameUi>>): String {
         var offset = 0
         for (section in sections) {
             if (gameIndex < offset + section.items.size) return section.sidebarLabel
@@ -962,14 +969,14 @@ class DualHomeViewModel(
     }
 
     data class SortResult(
-        val games: List<DualHomeGameUi>,
-        val sections: List<Section<DualHomeGameUi>>,
+        val games: List<HomeGameUi>,
+        val sections: List<Section<HomeGameUi>>,
         val gridItems: List<DualLibraryGridItem>,
         val labels: List<String>
     )
 
-    private fun applySort(games: List<DualHomeGameUi>, sort: ActiveSort): SortResult {
-        val sections = computeGenericSections(games, sort, DualHomeGameUiProps)
+    private fun applySort(games: List<HomeGameUi>, sort: ActiveSort): SortResult {
+        val sections = computeGenericSections(games, sort, HomeGameUiSortProps)
         val orderedSections = if (sort.descending) sections else sections.reversed()
         val sortedGames = orderedSections.flatMap { it.items }
         val labels = orderedSections.map { it.sidebarLabel }
@@ -1038,9 +1045,9 @@ class DualHomeViewModel(
     }
 
     private fun applyFiltersToList(
-        games: List<DualHomeGameUi>,
+        games: List<HomeGameUi>,
         filters: DualActiveFilters
-    ): List<DualHomeGameUi> {
+    ): List<HomeGameUi> {
         return games.filter { game ->
             val matchesSource = when (filters.source) {
                 "PLAYABLE" -> game.isPlayable
@@ -1118,46 +1125,65 @@ class DualHomeViewModel(
 
     // --- Private: Entity to UI ---
 
-    private fun GameEntity.toUi(): DualHomeGameUi {
+    private fun GameEntity.toUi(): HomeGameUi {
         val firstScreenshot = screenshotPaths?.split(",")?.firstOrNull()?.takeIf { it.isNotBlank() }
         val effectiveBackground = backgroundPath ?: firstScreenshot ?: coverPath
-        return DualHomeGameUi(
+        val isPlayable = localPath != null || source == GameSource.STEAM || source == GameSource.ANDROID_APP
+        return HomeGameUi(
             id = id,
             title = title,
-            sortTitle = sortTitle,
-            coverPath = coverPath,
-            platformName = platformSlug,
+            platformId = platformId,
             platformSlug = platformSlug,
-            playTimeMinutes = playTimeMinutes,
-            lastPlayedAt = lastPlayed?.toEpochMilli(),
-            status = status,
-            communityRating = rating,
-            userRating = userRating,
-            userDifficulty = userDifficulty,
-            isPlayable = localPath != null || source == GameSource.STEAM || source == GameSource.ANDROID_APP,
-            isFavorite = isFavorite,
+            platformDisplayName = platformSlug,
+            coverPath = coverPath,
+            gradientColors = null,
             backgroundPath = effectiveBackground,
-            description = description,
             developer = developer,
             releaseYear = releaseYear,
-            titleId = null,
             genre = genre,
+            isFavorite = isFavorite,
+            isDownloaded = isPlayable,
+            isRommGame = rommId != null,
+            rating = rating,
+            userRating = userRating,
+            userDifficulty = userDifficulty,
+            sortTitle = sortTitle,
             gameModes = gameModes,
             franchises = franchises,
             addedAt = addedAt.toEpochMilli(),
-            playCount = playCount
+            playCount = playCount,
+            playTimeMinutes = playTimeMinutes,
+            lastPlayedAt = lastPlayed?.toEpochMilli(),
+            isPlayable = isPlayable,
+            description = description,
+            status = status,
+            titleId = null
         )
+    }
+
+    // --- Cover Repair ---
+
+    fun repairCoverImage(gameId: Long, failedPath: String) {
+        val useCase = repairImageCacheUseCase ?: return
+        if (!pendingCoverRepairs.add(gameId)) return
+        viewModelScope.launch {
+            val url = useCase.repairCover(gameId, failedPath)
+            if (url != null) {
+                _uiState.update { it.copy(repairedCoverPaths = it.repairedCoverPaths + (gameId to url)) }
+            }
+            pendingCoverRepairs.remove(gameId)
+        }
     }
 }
 
-object DualHomeGameUiProps : SortableProps<DualHomeGameUi> {
-    override fun sortTitle(item: DualHomeGameUi) = item.sortTitle
-    override fun rating(item: DualHomeGameUi) = item.communityRating
-    override fun userRating(item: DualHomeGameUi) = item.userRating
-    override fun userDifficulty(item: DualHomeGameUi) = item.userDifficulty
-    override fun releaseYear(item: DualHomeGameUi) = item.releaseYear
-    override fun playCount(item: DualHomeGameUi) = item.playCount
-    override fun playTimeMinutes(item: DualHomeGameUi) = item.playTimeMinutes
-    override fun lastPlayedEpochMilli(item: DualHomeGameUi) = item.lastPlayedAt
-    override fun addedAtEpochMilli(item: DualHomeGameUi) = item.addedAt ?: 0L
+object HomeGameUiSortProps : SortableProps<HomeGameUi> {
+    override fun sortTitle(item: HomeGameUi) = item.sortTitle
+    override fun rating(item: HomeGameUi) = item.rating
+    override fun userRating(item: HomeGameUi) = item.userRating
+    override fun userDifficulty(item: HomeGameUi) = item.userDifficulty
+    override fun releaseYear(item: HomeGameUi) = item.releaseYear
+    override fun playCount(item: HomeGameUi) = item.playCount
+    override fun playTimeMinutes(item: HomeGameUi) = item.playTimeMinutes
+    override fun lastPlayedEpochMilli(item: HomeGameUi) = item.lastPlayedAt
+    override fun addedAtEpochMilli(item: HomeGameUi) = item.addedAt ?: 0L
 }
