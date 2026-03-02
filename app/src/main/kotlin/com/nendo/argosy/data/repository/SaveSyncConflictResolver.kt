@@ -87,9 +87,9 @@ class SaveSyncConflictResolver @Inject constructor(
                 val config = SavePathRegistry.getConfigIncludingUnsupported(emulatorId)
                 val serverSave = if (activeChannel != null) {
                     val channelSave = matchingSaves
-                        .filter { it.slot == activeChannel }
-                        .maxByOrNull { client.parseTimestamp(it.updatedAt) }
-                        ?: matchingSaves.find { it.fileNameNoExt == activeChannel }
+                        .filter { it.slot != null && SaveSyncApiClient.equalsNormalized(it.slot, activeChannel) }
+                        .maxByOrNull { SaveSyncApiClient.parseTimestamp(it.updatedAt) }
+                        ?: matchingSaves.find { it.fileNameNoExt != null && SaveSyncApiClient.equalsNormalized(it.fileNameNoExt, activeChannel) }
                     if (channelSave != null) {
                         Logger.debug(TAG, "[SaveSync] PRE_LAUNCH gameId=$gameId | Using active channel save | channel=$activeChannel, slot=${channelSave.slot}")
                         channelSave
@@ -98,16 +98,19 @@ class SaveSyncConflictResolver @Inject constructor(
                         null
                     }
                 } else {
-                    val candidates = matchingSaves.filter { client.isLatestSaveFileName(it.fileName, romBaseName) }
+                    val candidates = matchingSaves.filter {
+                        SaveSyncApiClient.isLatestSaveFileName(it.fileName, romBaseName) ||
+                            (it.slot != null && romBaseName != null && SaveSyncApiClient.equalsNormalized(it.slot, romBaseName))
+                    }
                     if (config?.usesGciFormat == true && candidates.size > 1) {
                         val preferred = candidates.find { it.fileName.endsWith(".zip", ignoreCase = true) }
-                            ?: candidates.firstOrNull()
+                            ?: candidates.maxByOrNull { SaveSyncApiClient.parseTimestamp(it.updatedAt) }
                         if (preferred != null && preferred != candidates.firstOrNull()) {
                             Logger.debug(TAG, "[SaveSync] PRE_LAUNCH gameId=$gameId | GCI format: preferring ZIP bundle over single file")
                         }
                         preferred
                     } else {
-                        candidates.firstOrNull()
+                        candidates.maxByOrNull { SaveSyncApiClient.parseTimestamp(it.updatedAt) }
                     }
                 }
                 if (serverSave == null) {
@@ -115,7 +118,7 @@ class SaveSyncConflictResolver @Inject constructor(
                     return@withContext PreLaunchSyncResult.NoServerSave
                 }
 
-                val serverTime = client.parseTimestamp(serverSave.updatedAt)
+                val serverTime = SaveSyncApiClient.parseTimestamp(serverSave.updatedAt)
                 val selectedChannel = serverSave.slot ?: serverSave.fileNameNoExt
                 val existing = if (selectedChannel != null) {
                     saveSyncDao.getByGameEmulatorAndChannel(gameId, emulatorId, selectedChannel)
@@ -285,11 +288,14 @@ class SaveSyncConflictResolver @Inject constructor(
         val matchingSaves = serverSaves.filter { it.emulator == emulatorId || it.emulator == null }
         val serverSave = if (channelName != null) {
             matchingSaves
-                .filter { it.slot == channelName }
-                .maxByOrNull { client.parseTimestamp(it.updatedAt) }
-                ?: matchingSaves.find { it.fileNameNoExt == channelName }
+                .filter { it.slot != null && SaveSyncApiClient.equalsNormalized(it.slot, channelName) }
+                .maxByOrNull { SaveSyncApiClient.parseTimestamp(it.updatedAt) }
+                ?: matchingSaves.find { it.fileNameNoExt != null && SaveSyncApiClient.equalsNormalized(it.fileNameNoExt, channelName) }
         } else {
-            matchingSaves.filter { client.isLatestSaveFileName(it.fileName, romBaseName) }.firstOrNull()
+            matchingSaves.filter {
+                SaveSyncApiClient.isLatestSaveFileName(it.fileName, romBaseName) ||
+                    (it.slot != null && romBaseName != null && SaveSyncApiClient.equalsNormalized(it.slot, romBaseName))
+            }.maxByOrNull { SaveSyncApiClient.parseTimestamp(it.updatedAt) }
         }
 
         if (serverSave == null) {
@@ -297,7 +303,7 @@ class SaveSyncConflictResolver @Inject constructor(
             return@withContext null
         }
 
-        val serverTime = client.parseTimestamp(serverSave.updatedAt)
+        val serverTime = SaveSyncApiClient.parseTimestamp(serverSave.updatedAt)
 
         val syncEntity = if (channelName != null) {
             saveSyncDao.getByGameEmulatorAndChannel(gameId, emulatorId, channelName)
